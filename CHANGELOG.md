@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-01-25
+
+### Added
+- **Custom filename templates** - `--template` argument with 10 variables
+  - Variables: `{type}`, `{YYYY}`, `{YY}`, `{MM}`, `{DD}`, `{HH}`, `{hh}`, `{mm}`, `{ss}`, `{HHmmss}`
+  - Example: `--template "IMG_{YYYY}{MM}{DD}_{HHmmss}"`
+- **Folder organization** - `--organize` argument with 4 modes
+  - Modes: `none`, `year`, `year-month`, `date`
+  - Example: `--organize year-month` creates `2023/08/` structure
+- New modules: `template_parser.py`, `folder_organizer.py`
+- Updated help with new options
+
+### Changed
+- Version updated to 1.2
+- Improved CLI help text
+
 ## [1.1.0] - 2026-01-22
 
 ### Added

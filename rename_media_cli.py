@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 Программа для переименования фото и видео файлов по дате съёмки
-Версия: 1.1
+Версия: 1.2
 Автор: Claude Sonnet 4.5
 Дата: 2026-01-21
-Обновление: 2026-01-22 (добавлено обнаружение переименованных файлов)
+Обновления:
+  - 2026-01-22: добавлено обнаружение переименованных файлов
+  - 2026-01-25: добавлены пользовательские шаблоны и группировка по папкам
 """
 
 import os
@@ -16,6 +18,15 @@ from pathlib import Path
 import subprocess
 import json
 from typing import Optional, Tuple, List
+
+# Импорт новых модулей для v1.2
+try:
+    from template_parser import TemplateParser
+    from folder_organizer import FolderOrganizer
+except ImportError:
+    print("❌ Ошибка: не найдены модули template_parser или folder_organizer")
+    print("Убедитесь что файлы template_parser.py и folder_organizer.py находятся в той же папке")
+    sys.exit(1)
 
 try:
     from PIL import Image
@@ -293,7 +304,8 @@ def get_media_date(file_path: str, is_video: bool) -> Tuple[Optional[datetime], 
 # =============================================================================
 
 def generate_new_filename(prefix: str, date: datetime, extension: str,
-                         base_dir: str) -> str:
+                         base_dir: str, template_parser: TemplateParser = None,
+                         folder_organizer: FolderOrganizer = None) -> Tuple[str, Path]:
     """
     Сгенерировать новое имя файла, избегая дубликатов.
 
@@ -302,32 +314,50 @@ def generate_new_filename(prefix: str, date: datetime, extension: str,
         date: дата для форматирования
         extension: расширение файла (с точкой)
         base_dir: директория где будет файл
+        template_parser: парсер шаблонов (опционально)
+        folder_organizer: организатор папок (опционально)
 
     Returns:
-        новое имя файла (без пути)
+        кортеж (новое имя файла без пути, полный путь к целевой папке)
     """
-    # Базовое имя
-    date_str = date.strftime(DATE_FORMAT)
-    new_name = f"{prefix}-{date_str}{extension}"
-    new_path = os.path.join(base_dir, new_name)
+    # Определяем целевую папку
+    if folder_organizer:
+        target_dir = folder_organizer.get_folder_path(Path(base_dir), date)
+    else:
+        target_dir = Path(base_dir)
+    
+    # Генерируем базовое имя
+    if template_parser:
+        base_name = template_parser.format(date, prefix)
+    else:
+        # Формат по умолчанию
+        date_str = date.strftime(DATE_FORMAT)
+        base_name = f"{prefix}-{date_str}"
+    
+    new_name = f"{base_name}{extension}"
+    new_path = target_dir / new_name
 
     # Если файл существует, добавляем счётчик
     counter = 1
-    while os.path.exists(new_path):
-        new_name = f"{prefix}-{date_str}_{counter}{extension}"
-        new_path = os.path.join(base_dir, new_name)
+    while new_path.exists():
+        new_name = f"{base_name}_{counter}{extension}"
+        new_path = target_dir / new_name
         counter += 1
 
-    return new_name
+    return new_name, target_dir
 
 
-def process_file(file_path: str, dry_run: bool = False) -> Tuple[bool, str]:
+def process_file(file_path: str, dry_run: bool = False,
+                 template_parser: TemplateParser = None,
+                 folder_organizer: FolderOrganizer = None) -> Tuple[bool, str]:
     """
     Обработать один файл: определить дату и переименовать.
 
     Args:
         file_path: полный путь к файлу
         dry_run: если True, не выполнять переименование, только показать что будет
+        template_parser: парсер шаблонов (опционально)
+        folder_organizer: организатор папок (опционально)
 
     Returns:
         (успех, сообщение)
@@ -351,23 +381,33 @@ def process_file(file_path: str, dry_run: bool = False) -> Tuple[bool, str]:
     if not date:
         return False, f"[X] Не удалось получить дату: {path_obj.name}"
 
-    # Генерируем новое имя
-    new_name = generate_new_filename(prefix, date, ext, str(path_obj.parent))
+    # Генерируем новое имя и определяем целевую папку
+    new_name, target_dir = generate_new_filename(
+        prefix, date, ext, str(path_obj.parent),
+        template_parser, folder_organizer
+    )
+    
+    # Создаём целевую папку если нужно
+    if folder_organizer and not dry_run:
+        folder_organizer.create_folder(target_dir, dry_run=False)
 
-    # Проверка: если новое имя совпадает со старым
-    # (это может произойти только если файл уже был правильно переименован
-    # и пользователь явно выбрал "Переименовать заново")
-    if new_name == path_obj.name:
+    # Проверка: если новое имя совпадает со старым И папка та же
+    if new_name == path_obj.name and target_dir == path_obj.parent:
         # В этом случае файл не нуждается в переименовании
         return False, f"[>] Уже имеет правильное имя: {path_obj.name}"
 
     # Формируем сообщение
-    msg = f"{'[TEST]' if dry_run else '[+]'} {path_obj.name} -> {new_name} (дата: {source})"
+    if target_dir != path_obj.parent:
+        # Файл будет перемещён в другую папку
+        relative_target = target_dir.relative_to(path_obj.parent.parent) if target_dir != path_obj.parent else target_dir.name
+        msg = f"{'[TEST]' if dry_run else '[+]'} {path_obj.name} -> {relative_target}/{new_name} (дата: {source})"
+    else:
+        msg = f"{'[TEST]' if dry_run else '[+]'} {path_obj.name} -> {new_name} (дата: {source})"
 
-    # Выполняем переименование
+    # Выполняем переименование/перемещение
     if not dry_run:
         try:
-            new_path = path_obj.parent / new_name
+            new_path = target_dir / new_name
             os.rename(file_path, new_path)
         except Exception as e:
             return False, f"[X] Ошибка переименования {path_obj.name}: {e}"
@@ -375,7 +415,8 @@ def process_file(file_path: str, dry_run: bool = False) -> Tuple[bool, str]:
     return True, msg
 
 
-def scan_and_rename(root_folder: str, dry_run: bool = False, files_to_process: Optional[List[Path]] = None) -> dict:
+def scan_and_rename(root_folder: str, dry_run: bool = False, files_to_process: Optional[List[Path]] = None,
+                   template: str = None, organize: str = 'none') -> dict:
     """
     Сканировать папку и переименовать все медиафайлы.
 
@@ -383,6 +424,8 @@ def scan_and_rename(root_folder: str, dry_run: bool = False, files_to_process: O
         root_folder: путь к корневой папке
         dry_run: если True, только показать что будет изменено
         files_to_process: список файлов для обработки (если None, обрабатываются все)
+        template: пользовательский шаблон имени (опционально)
+        organize: структура организации папок ('none', 'year', 'year-month', 'date')
 
     Returns:
         словарь со статистикой
@@ -391,6 +434,20 @@ def scan_and_rename(root_folder: str, dry_run: bool = False, files_to_process: O
 
     if not root.is_dir():
         raise ValueError(f"Папка не существует: {root_folder}")
+    
+    # Создаём парсер шаблонов если указан шаблон
+    template_parser = None
+    if template:
+        try:
+            template_parser = TemplateParser(template)
+        except ValueError as e:
+            print(f"[!] Ошибка в шаблоне: {e}")
+            print(f"[!] Используется формат по умолчанию")
+    
+    # Создаём организатор папок
+    folder_organizer = None
+    if organize != 'none':
+        folder_organizer = FolderOrganizer(organize)
 
     stats = {
         'total': 0,
@@ -475,7 +532,7 @@ def scan_and_rename(root_folder: str, dry_run: bool = False, files_to_process: O
     for file_path in files_to_process:
         stats['total'] += 1
 
-        success, message = process_file(str(file_path), dry_run)
+        success, message = process_file(str(file_path), dry_run, template_parser, folder_organizer)
 
         if success:
             stats['success'] += 1
@@ -498,8 +555,9 @@ def print_banner():
     """Вывести баннер программы."""
     print("=" * 70)
     print("  Программа для переименования фото и видео по дате съёмки")
-    print("  Версия 1.1 | 2026-01-22")
-    print("  + Обнаружение уже переименованных файлов")
+    print("  Версия 1.2 | 2026-01-25")
+    print("  + Пользовательские шаблоны имён")
+    print("  + Группировка по датам в папки")
     print("=" * 70)
     print()
 
@@ -507,11 +565,28 @@ def print_banner():
 def print_help():
     """Вывести справку."""
     print("Использование:")
-    print("  python rename_media_cli.py [путь_к_папке] [--test]")
+    print("  python rename_media_cli.py [путь_к_папке] [опции]")
     print()
     print("Параметры:")
-    print("  путь_к_папке    Путь к папке с фото/видео (по умолчанию: текущая папка)")
-    print("  --test          Тестовый режим (показать что будет изменено без реального переименования)")
+    print("  путь_к_папке              Путь к папке с фото/видео (по умолчанию: текущая папка)")
+    print()
+    print("Опции:")
+    print("  --test                    Тестовый режим (показать что будет изменено без реального переименования)")
+    print("  --template \"шаблон\"       Пользовательский шаблон имени файла")
+    print("  --organize [режим]        Организация файлов по папкам")
+    print()
+    print("Шаблоны имён:")
+    print("  Переменные: {type}, {YYYY}, {YY}, {MM}, {DD}, {HH}, {hh}, {mm}, {ss}, {HHmmss}")
+    print("  По умолчанию: {type}-{YYYY}-{MM}-{DD}_{HHmmss}")
+    print("  Примеры:")
+    print("    IMG_{YYYY}{MM}{DD}_{HHmmss}              → IMG_20230815_142203.jpg")
+    print("    {type}_{DD}.{MM}.{YYYY}_{HH}-{mm}-{ss}  → Photo_15.08.2023_14-22-03.jpg")
+    print()
+    print("Режимы организации:")
+    print("  none        Без организации (по умолчанию)")
+    print("  year        По годам (2023/, 2024/)")
+    print("  year-month  По годам и месяцам (2023/08/, 2024/01/)")
+    print("  date        По датам (2023-08-15/, 2024-01-10/)")
     print()
     print(f"Поддерживаемые форматы фото ({len(PHOTO_EXTENSIONS)}):")
     print(f"  {', '.join(sorted(PHOTO_EXTENSIONS))}")
@@ -542,11 +617,30 @@ def main():
     # Определяем параметры
     dry_run = '--test' in args
     folder = '.'
+    template = None
+    organize = 'none'
 
-    for arg in args:
-        if not arg.startswith('--'):
+    # Парсим аргументы
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        
+        if arg == '--template' and i + 1 < len(args):
+            template = args[i + 1]
+            i += 2
+            continue
+        elif arg == '--organize' and i + 1 < len(args):
+            organize = args[i + 1]
+            if organize not in ['none', 'year', 'year-month', 'date']:
+                print(f"[X] Ошибка: неизвестная структура '{organize}'")
+                print("    Доступные: none, year, year-month, date")
+                return 1
+            i += 2
+            continue
+        elif not arg.startswith('--'):
             folder = arg
-            break
+        
+        i += 1
 
     # Проверяем доступность ffprobe для видео
     has_ffprobe = check_ffprobe_available()
@@ -561,6 +655,13 @@ def main():
     # Выводим информацию
     print(f"[*] Папка для обработки: {os.path.abspath(folder)}")
     print(f"[*] Режим: {'ТЕСТ (без изменений)' if dry_run else 'РЕАЛЬНОЕ ПЕРЕИМЕНОВАНИЕ'}")
+    if template:
+        print(f"[*] Шаблон имени: {template}")
+    else:
+        print(f"[*] Шаблон имени: {{type}}-{{YYYY}}-{{MM}}-{{DD}}_{{HHmmss}} (по умолчанию)")
+    if organize != 'none':
+        organizer_temp = FolderOrganizer(organize)
+        print(f"[*] Организация: {organizer_temp.get_description()}")
     print()
 
     if dry_run:
@@ -578,7 +679,7 @@ def main():
     print("-" * 70)
 
     try:
-        stats = scan_and_rename(folder, dry_run)
+        stats = scan_and_rename(folder, dry_run, template=template, organize=organize)
 
         # Выводим статистику
         print("-" * 70)
