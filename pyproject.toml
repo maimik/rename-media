@@ -53,7 +53,7 @@ Homepage = "https://github.com/maimik/rename-media"
 Documentation = "https://github.com/maimik/rename-media#readme"
 Repository = "https://github.com/maimik/rename-media.git"
 Issues = "https://github.com/maimik/rename-media/issues"
-Changelog = "https://github.com/maimik/rename-media/blob/master/CHANGELOG.md"
+Changelog = "https://github.com/maimik/rename-media/blob/main/CHANGELOG.md"
 
 [project.scripts]
 rename-media = "rename_media_cli:main"
@@ -65,7 +65,7 @@ rename-media-gui = "rename_media_gui:main"
 py-modules = ["rename_media_cli", "rename_media_gui"]
 
 [tool.pytest.ini_options]
-testpaths = ["."]
+testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"

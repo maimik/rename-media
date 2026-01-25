@@ -117,10 +117,10 @@ brew install ffmpeg
 
 ## 📖 Документация
 
-- [QUICK_START.txt](QUICK_START.txt) — Быстрый старт
-- [README_USER.txt](README_USER.txt) — Подробная инструкция
-- [BUILD_EXE.txt](BUILD_EXE.txt) — Создание EXE файла
-- [CLAUDE.MD](CLAUDE.MD) — Техническая документация
+- [docs/QUICK_START.txt](docs/QUICK_START.txt) — Быстрый старт
+- [docs/README_USER.txt](docs/README_USER.txt) — Подробная инструкция
+- [docs/BUILD_EXE.txt](docs/BUILD_EXE.txt) — Создание EXE файла
+- [docs/CLAUDE.MD](docs/CLAUDE.MD) — Техническая документация
 - [CHANGELOG.md](CHANGELOG.md) — История изменений
 - [CONTRIBUTING.md](CONTRIBUTING.md) — Участие в разработке
 
