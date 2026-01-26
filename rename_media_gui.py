@@ -175,7 +175,10 @@ def generate_new_filename(prefix: str, date: datetime, extension: str,
                          base_dir: str, template_parser: Optional[TemplateParser] = None) -> str:
     """Сгенерировать новое имя файла, избегая дубликатов."""
     if template_parser:
-        new_name = template_parser.parse(prefix, date, extension)
+        # TemplateParser.format возвращает имя БЕЗ расширения
+        # Аргументы: date, file_type
+        name_body = template_parser.format(date, prefix)
+        new_name = f"{name_body}{extension}"
     else:
         date_str = date.strftime(DATE_FORMAT)
         new_name = f"{prefix}-{date_str}{extension}"
@@ -220,7 +223,7 @@ def process_file(file_path: str, dry_run: bool = False,
     # Если включена организация по папкам, целевая папка меняется
     target_dir = path_obj.parent
     if folder_organizer:
-        target_dir = folder_organizer.get_target_path(Path(file_path).parent, date)
+        target_dir = folder_organizer.get_folder_path(Path(file_path).parent, date)
         if not dry_run and not target_dir.exists():
             target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -562,7 +565,7 @@ class RenameMediaApp:
 
         tk.Label(
             settings_frame,
-            text="Доступные теги: {prefix}, {YYYY}, {MM}, {DD}, {HH}, {mm}, {ss}, {ext}",
+            text="Доступные теги: {type}, {YYYY}, {MM}, {DD}, {HH}, {mm}, {ss} ({type}=Photo/Video)",
             font=("Arial", 8),
             fg="gray"
         ).pack(anchor="w")
