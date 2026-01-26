@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-01-26
+
+### Added
+- **GUI support** for custom filename templates
+- **GUI support** for folder organization (Year/Month)
+- Settings panel in GUI for easier configuration
+- Auto-creation of target directories during folder organization
+- Improved duplicate handling when using custom templates
+
 ## [1.2.0] - 2026-01-25
 
 ### Added

@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 Программа для переименования фото и видео файлов по дате съёмки (GUI версия)
-Версия: 1.1
+Версия: 1.3
 Автор: Claude Sonnet 4.5
 Дата: 2026-01-21
-Обновление: 2026-01-22 (добавлено обнаружение переименованных файлов)
+Обновления:
+  - 2026-01-22: добавлено обнаружение переименованных файлов
+  - 2026-01-26: добавлены пользовательские шаблоны и группировка по папкам
 """
 
 import os
@@ -20,6 +22,16 @@ import json
 import threading
 import queue
 from typing import Optional, Tuple, List
+
+# Импорт новых модулей для v1.3
+try:
+    from template_parser import TemplateParser
+    from folder_organizer import FolderOrganizer
+except ImportError:
+    # Если запущен через IDE или из другого места, пробуем относительный путь
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from template_parser import TemplateParser
+    from folder_organizer import FolderOrganizer
 
 try:
     from PIL import Image
@@ -160,22 +172,33 @@ def get_media_date(file_path: str, is_video: bool) -> Tuple[Optional[datetime], 
 
 
 def generate_new_filename(prefix: str, date: datetime, extension: str,
-                         base_dir: str) -> str:
+                         base_dir: str, template_parser: Optional[TemplateParser] = None) -> str:
     """Сгенерировать новое имя файла, избегая дубликатов."""
-    date_str = date.strftime(DATE_FORMAT)
-    new_name = f"{prefix}-{date_str}{extension}"
+    if template_parser:
+        new_name = template_parser.parse(prefix, date, extension)
+    else:
+        date_str = date.strftime(DATE_FORMAT)
+        new_name = f"{prefix}-{date_str}{extension}"
+    
     new_path = os.path.join(base_dir, new_name)
 
+    if not os.path.exists(new_path):
+        return new_name
+
+    # Обработка дубликатов для шаблонов и стандартного формата
+    name_stem = Path(new_name).stem
     counter = 1
     while os.path.exists(new_path):
-        new_name = f"{prefix}-{date_str}_{counter}{extension}"
+        new_name = f"{name_stem}_{counter}{extension}"
         new_path = os.path.join(base_dir, new_name)
         counter += 1
 
     return new_name
 
 
-def process_file(file_path: str, dry_run: bool = False) -> Tuple[bool, str]:
+def process_file(file_path: str, dry_run: bool = False,
+                 template_parser: Optional[TemplateParser] = None,
+                 folder_organizer: Optional[FolderOrganizer] = None) -> Tuple[bool, str]:
     """Обработать один файл: определить дату и переименовать."""
     path_obj = Path(file_path)
     ext = path_obj.suffix.lower()
@@ -194,20 +217,30 @@ def process_file(file_path: str, dry_run: bool = False) -> Tuple[bool, str]:
     if not date:
         return False, f"❌ Не удалось получить дату: {path_obj.name}"
 
-    new_name = generate_new_filename(prefix, date, ext, str(path_obj.parent))
+    # Если включена организация по папкам, целевая папка меняется
+    target_dir = path_obj.parent
+    if folder_organizer:
+        target_dir = folder_organizer.get_target_path(Path(file_path).parent, date)
+        if not dry_run and not target_dir.exists():
+            target_dir.mkdir(parents=True, exist_ok=True)
 
-    # Проверка: если новое имя совпадает со старым
-    # (это может произойти только если файл уже был правильно переименован
-    # и пользователь явно выбрал "Переименовать заново")
-    if new_name == path_obj.name:
-        # В этом случае файл не нуждается в переименовании
-        return False, f"⏩ Уже имеет правильное имя: {path_obj.name}"
+    new_name = generate_new_filename(prefix, date, ext, str(target_dir), template_parser)
+    new_path = target_dir / new_name
+
+    # Проверка: если путь не изменился
+    if new_path == path_obj:
+        return False, f"⏩ Уже имеет правильное имя и место: {path_obj.name}"
 
     msg = f"{'[ТЕСТ]' if dry_run else '✅'} {path_obj.name} → {new_name}"
+    if folder_organizer and target_dir != path_obj.parent:
+        try:
+            rel_target = target_dir.relative_to(path_obj.parent)
+            msg += f" (в {rel_target})"
+        except ValueError:
+            msg += f" (в {target_dir.name})"
 
     if not dry_run:
         try:
-            new_path = path_obj.parent / new_name
             os.rename(file_path, new_path)
         except Exception as e:
             return False, f"❌ Ошибка: {path_obj.name}: {e}"
@@ -423,6 +456,8 @@ class RenameMediaApp:
         self.folder_path = ""
         self.is_processing = False
         self.dry_run = tk.BooleanVar(value=True)
+        self.template_str = tk.StringVar(value=TemplateParser.DEFAULT_TEMPLATE)
+        self.organize_folders = tk.BooleanVar(value=False)
         
         # Переменные для синхронизации с диалогом
         self.user_choice = None
@@ -503,6 +538,43 @@ class RenameMediaApp:
             font=("Arial", 10)
         )
         self.check_test.pack()
+
+        # Фрейм настроек шаблона и папок
+        settings_frame = tk.LabelFrame(self.root, text="Настройки переименования", padx=10, pady=10)
+        settings_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        # Шаблон
+        template_label_frame = tk.Frame(settings_frame)
+        template_label_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Label(
+            template_label_frame,
+            text="Шаблон имени:",
+            font=("Arial", 10)
+        ).pack(side=tk.LEFT)
+        
+        tk.Entry(
+            template_label_frame,
+            textvariable=self.template_str,
+            font=("Consolas", 10),
+            width=50
+        ).pack(side=tk.LEFT, padx=10)
+
+        tk.Label(
+            settings_frame,
+            text="Доступные теги: {prefix}, {YYYY}, {MM}, {DD}, {HH}, {mm}, {ss}, {ext}",
+            font=("Arial", 8),
+            fg="gray"
+        ).pack(anchor="w")
+
+        # Группировка по папкам
+        self.check_folders = tk.Checkbutton(
+            settings_frame,
+            text="Группировать по папкам (Год/Месяц)",
+            variable=self.organize_folders,
+            font=("Arial", 10)
+        )
+        self.check_folders.pack(anchor="w", pady=5)
 
         # Кнопка запуска
         self.btn_run = tk.Button(
@@ -643,6 +715,7 @@ class RenameMediaApp:
         self.btn_select.config(state=tk.DISABLED)
         self.btn_run.config(state=tk.DISABLED)
         self.check_test.config(state=tk.DISABLED)
+        self.check_folders.config(state=tk.DISABLED)
 
         # Запускаем прогресс
         self.progress.start(10)
@@ -661,6 +734,15 @@ class RenameMediaApp:
                 'skipped': 0,
                 'errors': 0
             }
+
+            # Инициализация инструментов v1.3
+            template_parser = TemplateParser(self.template_str.get())
+            folder_organizer = FolderOrganizer() if self.organize_folders.get() else None
+            
+            if folder_organizer:
+                self.log_message("📁 Группировка по папкам ВКЛЮЧЕНА")
+            
+            self.log_message(f"📝 Используемый шаблон: {self.template_str.get()}\n")
 
             root = Path(self.folder_path)
             supported_exts = PHOTO_EXTENSIONS | VIDEO_EXTENSIONS
@@ -715,7 +797,12 @@ class RenameMediaApp:
             for file_path in files_to_process:
                 stats['total'] += 1
 
-                success, message = process_file(str(file_path), self.dry_run.get())
+                success, message = process_file(
+                    str(file_path), 
+                    self.dry_run.get(),
+                    template_parser,
+                    folder_organizer
+                )
 
                 if success:
                     stats['success'] += 1
@@ -775,6 +862,7 @@ class RenameMediaApp:
         self.btn_select.config(state=tk.NORMAL)
         self.btn_run.config(state=tk.NORMAL)
         self.check_test.config(state=tk.NORMAL)
+        self.check_folders.config(state=tk.NORMAL)
         self.is_processing = False
 
 

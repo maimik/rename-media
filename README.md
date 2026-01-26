@@ -3,7 +3,7 @@
 [![Tests](https://github.com/maimik/rename-media/actions/workflows/tests.yml/badge.svg)](https://github.com/maimik/rename-media/actions/workflows/tests.yml)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.1.0-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.3.0-orange.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 
 **Автоматическое переименование фото и видео файлов по дате съёмки**
@@ -132,11 +132,7 @@ brew install ffmpeg
 - [CHANGELOG.md](CHANGELOG.md) — История изменений
 - [CONTRIBUTING.md](CONTRIBUTING.md) — Участие в разработке
 
-## ⚠️ Важно
-
-1. **Сделайте резервную копию** перед использованием
-2. Сначала запустите в **тестовом режиме**
-3. Программа только переименовывает, не перемещает файлы
+3. Программа только переименовывает, не перемещает файлы (если не включена опция организации по папкам)
 
 ## 🤝 Участие в проекте
 
@@ -144,8 +140,6 @@ Contributions приветствуются! См. [CONTRIBUTING.md](CONTRIBUTING
 
 ### Возможные улучшения
 
-- [ ] Пользовательские шаблоны имён
-- [ ] Группировка по датам в папки
 - [ ] Функция отмены (undo)
 - [ ] Параллельная обработка
 
