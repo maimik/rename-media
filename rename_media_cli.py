@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Программа для переименования фото и видео файлов по дате съёмки
-Версия: 1.3
+Версия: 1.4
 Автор: Claude Sonnet 4.5
 Дата: 2026-01-21
 Обновления:
@@ -23,9 +23,10 @@ from typing import Optional, Tuple, List
 try:
     from template_parser import TemplateParser
     from folder_organizer import FolderOrganizer
+    from history_manager import HistoryManager
 except ImportError:
-    print("❌ Ошибка: не найдены модули template_parser или folder_organizer")
-    print("Убедитесь что файлы template_parser.py и folder_organizer.py находятся в той же папке")
+    print("❌ Ошибка: не найдены модули template_parser, folder_organizer или history_manager")
+    print("Убедитесь что файлы template_parser.py, folder_organizer.py и history_manager.py находятся в той же папке")
     sys.exit(1)
 
 try:
@@ -360,7 +361,8 @@ def process_file(file_path: str, dry_run: bool = False,
         folder_organizer: организатор папок (опционально)
 
     Returns:
-        (успех, сообщение)
+        (успех, сообщение, кортеж_путей_или_None)
+        кортеж_путей = (старый_путь, новый_путь)
     """
     path_obj = Path(file_path)
     ext = path_obj.suffix.lower()
@@ -373,13 +375,13 @@ def process_file(file_path: str, dry_run: bool = False,
         prefix = "Video"
         is_video = True
     else:
-        return False, f"[?] Пропущен (неподдерживаемый формат): {path_obj.name}"
+        return False, f"[?] Пропущен (неподдерживаемый формат): {path_obj.name}", None
 
     # Получаем дату
     date, source = get_media_date(str(file_path), is_video)
 
     if not date:
-        return False, f"[X] Не удалось получить дату: {path_obj.name}"
+        return False, f"[X] Не удалось получить дату: {path_obj.name}", None
 
     # Генерируем новое имя и определяем целевую папку
     new_name, target_dir = generate_new_filename(
@@ -394,7 +396,7 @@ def process_file(file_path: str, dry_run: bool = False,
     # Проверка: если новое имя совпадает со старым И папка та же
     if new_name == path_obj.name and target_dir == path_obj.parent:
         # В этом случае файл не нуждается в переименовании
-        return False, f"[>] Уже имеет правильное имя: {path_obj.name}"
+        return False, f"[>] Уже имеет правильное имя: {path_obj.name}", None
 
     # Формируем сообщение
     if target_dir != path_obj.parent:
@@ -405,14 +407,15 @@ def process_file(file_path: str, dry_run: bool = False,
         msg = f"{'[TEST]' if dry_run else '[+]'} {path_obj.name} -> {new_name} (дата: {source})"
 
     # Выполняем переименование/перемещение
+    new_path = target_dir / new_name
+    
     if not dry_run:
         try:
-            new_path = target_dir / new_name
             os.rename(file_path, new_path)
         except Exception as e:
-            return False, f"[X] Ошибка переименования {path_obj.name}: {e}"
+            return False, f"[X] Ошибка переименования {path_obj.name}: {e}", None
 
-    return True, msg
+    return True, msg, (path_obj, new_path)
 
 
 def scan_and_rename(root_folder: str, dry_run: bool = False, files_to_process: Optional[List[Path]] = None,
@@ -529,13 +532,24 @@ def scan_and_rename(root_folder: str, dry_run: bool = False, files_to_process: O
             files_to_process = all_files
 
     # Обрабатываем файлы
+    changes_for_history = []
+    
     for file_path in files_to_process:
         stats['total'] += 1
 
-        success, message = process_file(str(file_path), dry_run, template_parser, folder_organizer)
+        success, message, paths = process_file(str(file_path), dry_run, template_parser, folder_organizer)
 
         if success:
             stats['success'] += 1
+            if not dry_run and paths:
+                try:
+                    old_abs, new_abs = paths
+                    old_rel = old_abs.relative_to(root)
+                    new_rel = new_abs.relative_to(root)
+                    changes_for_history.append({"old": str(old_rel), "new": str(new_rel)})
+                except ValueError:
+                    # Если пути не относительны корню (редкий кейс, но возможен)
+                    pass
         elif 'Пропущен' in message or 'Уже переименован' in message:
             stats['skipped'] += 1
         else:
@@ -543,6 +557,12 @@ def scan_and_rename(root_folder: str, dry_run: bool = False, files_to_process: O
 
         stats['messages'].append(message)
         print(message)
+
+    # Сохраняем историю
+    if not dry_run and changes_for_history:
+        history_manager_instance = HistoryManager(root)
+        history_manager_instance.record(changes_for_history)
+        print(f"\n[i] Записано {len(changes_for_history)} операций в историю")
 
     return stats
 
@@ -555,9 +575,10 @@ def print_banner():
     """Вывести баннер программы."""
     print("=" * 70)
     print("  Программа для переименования фото и видео по дате съёмки")
-    print("  Версия 1.3 | 2026-01-26")
+    print("  Версия 1.4 | 2026-01-27")
     print("  + Пользовательские шаблоны имён")
     print("  + Группировка по датам в папки")
+    print("  + Функция отмены действий (Undo)")
     print("=" * 70)
     print()
 
@@ -574,6 +595,9 @@ def print_help():
     print("  --test                    Тестовый режим (показать что будет изменено без реального переименования)")
     print("  --template \"шаблон\"       Пользовательский шаблон имени файла")
     print("  --organize [режим]        Организация файлов по папкам")
+    print("  --undo                    Отменить последнюю операцию")
+    print("  --history                 Показать историю операций")
+    print("  --clear-history           Очистить историю операций")
     print()
     print("Шаблоны имён:")
     print("  Переменные: {type}, {YYYY}, {YY}, {MM}, {DD}, {HH}, {hh}, {mm}, {ss}, {HHmmss}")
@@ -639,8 +663,56 @@ def main():
             continue
         elif not arg.startswith('--'):
             folder = arg
-        
+
         i += 1
+
+    # Инициализация менеджера истории для команд undo/history
+    history_manager = HistoryManager(folder)
+
+    # Обработка команд истории
+    if '--undo' in args:
+        print(f"[*] Выполняется отмена последней операции в: {os.path.abspath(folder)}")
+        confirm = input("[?] Вы уверены? (y/N): ")
+        if confirm.lower() in ['y', 'yes', 'д', 'да']:
+            success, success_msgs, error_msgs = history_manager.undo()
+            
+            for msg in success_msgs:
+                print(f"[OK] {msg}")
+            for err in error_msgs:
+                print(f"[X] {err}")
+                
+            if success:
+                print("\n[+] Отмена выполнена успешно.")
+            elif not success_msgs and not error_msgs:
+                print("\n[i] Нет операций для отмены.")
+            else:
+                print("\n[!] Отмена выполнена с ошибками.")
+        else:
+            print("[X] Отменено пользователем.")
+        return 0
+
+    if '--history' in args:
+        history = history_manager.get_history()
+        if not history:
+            print(f"[i] История пуста для папки: {os.path.abspath(folder)}")
+        else:
+            print(f"[*] История операций для: {os.path.abspath(folder)}")
+            print("-" * 50)
+            for idx, entry in enumerate(history, 1):
+                timestamp = entry.get('timestamp', 'N/A').replace('T', ' ')
+                files_count = len(entry.get('files', []))
+                print(f"{idx}. [{timestamp}] Переименовано файлов: {files_count}")
+        return 0
+
+    if '--clear-history' in args:
+        print(f"[*] Очистка истории в: {os.path.abspath(folder)}")
+        confirm = input("[?] Вы уверены? Это действие необратимо. (y/N): ")
+        if confirm.lower() in ['y', 'yes', 'д', 'да']:
+            history_manager.clear()
+            print("[OK] История очищена.")
+        else:
+            print("[X] Отменено пользователем.")
+        return 0
 
     # Проверяем доступность ffprobe для видео
     has_ffprobe = check_ffprobe_available()

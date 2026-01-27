@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-01-27
+
+### Added
+- **Undo functionality** - revert last rename operation
+  - CLI: `--undo`, `--history`, `--clear-history` commands
+  - GUI: Edit menu with "Undo" (Ctrl+Z), "Show history", "Clear history"
+- New module: `history_manager.py` for tracking rename operations
+- Hidden `.rename_history.json` file stores up to 10 operations per folder
+- Automatic cleanup of empty folders after undo
+
+### Fixed
+- CLI argument parsing bug (duplicate increment)
+- Windows hidden file permission handling
+
 ## [1.3.0] - 2026-01-26
 
 ### Added
@@ -86,8 +100,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Fallback | No | **Yes** |
 | Duplicate handling | No | **Yes** |
 | Renamed file detection | No | **Yes** (v1.1) |
+| Undo functionality | No | **Yes** (v1.4) |
 
 ---
 
+[1.4.0]: https://github.com/maimik/rename-media/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/maimik/rename-media/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/maimik/rename-media/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/maimik/rename-media/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/maimik/rename-media/releases/tag/v1.0.0

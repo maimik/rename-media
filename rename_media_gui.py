@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Программа для переименования фото и видео файлов по дате съёмки (GUI версия)
-Версия: 1.3
+Версия: 1.4
 Автор: Claude Sonnet 4.5
 Дата: 2026-01-21
 Обновления:
@@ -27,11 +27,13 @@ from typing import Optional, Tuple, List
 try:
     from template_parser import TemplateParser
     from folder_organizer import FolderOrganizer
+    from history_manager import HistoryManager
 except ImportError:
     # Если запущен через IDE или из другого места, пробуем относительный путь
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     from template_parser import TemplateParser
     from folder_organizer import FolderOrganizer
+    from history_manager import HistoryManager
 
 try:
     from PIL import Image
@@ -201,7 +203,7 @@ def generate_new_filename(prefix: str, date: datetime, extension: str,
 
 def process_file(file_path: str, dry_run: bool = False,
                  template_parser: Optional[TemplateParser] = None,
-                 folder_organizer: Optional[FolderOrganizer] = None) -> Tuple[bool, str]:
+                 folder_organizer: Optional[FolderOrganizer] = None) -> Tuple[bool, str, Optional[Tuple[Path, Path]]]:
     """Обработать один файл: определить дату и переименовать."""
     path_obj = Path(file_path)
     ext = path_obj.suffix.lower()
@@ -213,12 +215,12 @@ def process_file(file_path: str, dry_run: bool = False,
         prefix = "Video"
         is_video = True
     else:
-        return False, f"❓ Пропущен: {path_obj.name}"
+        return False, f"❓ Пропущен: {path_obj.name}", None
 
     date, source = get_media_date(str(file_path), is_video)
 
     if not date:
-        return False, f"❌ Не удалось получить дату: {path_obj.name}"
+        return False, f"❌ Не удалось получить дату: {path_obj.name}", None
 
     # Если включена организация по папкам, целевая папка меняется
     target_dir = path_obj.parent
@@ -232,7 +234,7 @@ def process_file(file_path: str, dry_run: bool = False,
 
     # Проверка: если путь не изменился
     if new_path == path_obj:
-        return False, f"⏩ Уже имеет правильное имя и место: {path_obj.name}"
+        return False, f"⏩ Уже имеет правильное имя и место: {path_obj.name}", None
 
     msg = f"{'[ТЕСТ]' if dry_run else '✅'} {path_obj.name} → {new_name}"
     if folder_organizer and target_dir != path_obj.parent:
@@ -246,9 +248,9 @@ def process_file(file_path: str, dry_run: bool = False,
         try:
             os.rename(file_path, new_path)
         except Exception as e:
-            return False, f"❌ Ошибка: {path_obj.name}: {e}"
+            return False, f"❌ Ошибка: {path_obj.name}: {e}", None
 
-    return True, msg
+    return True, msg, (path_obj, new_path)
 
 
 # =============================================================================
@@ -461,6 +463,16 @@ class RenameMediaApp:
         self.dry_run = tk.BooleanVar(value=True)
         self.template_str = tk.StringVar(value=TemplateParser.DEFAULT_TEMPLATE)
         self.organize_folders = tk.BooleanVar(value=False)
+        self.history_manager = None
+        
+        # Меню
+        self.menu_bar = tk.Menu(self.root)
+        self.root.config(menu=self.menu_bar)
+        self.create_menu()
+
+        # Binding Ctrl+Z
+        self.root.bind('<Control-z>', lambda event: self.on_undo())
+        self.root.bind('<Control-Z>', lambda event: self.on_undo())
         
         # Переменные для синхронизации с диалогом
         self.user_choice = None
@@ -480,6 +492,133 @@ class RenameMediaApp:
         x = (self.root.winfo_screenwidth() // 2) - (width // 2)
         y = (self.root.winfo_screenheight() // 2) - (height // 2)
         self.root.geometry(f'{width}x{height}+{x}+{y}')
+
+    def create_menu(self):
+        """Создать меню приложения."""
+        # Меню Правка
+        self.edit_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.menu_bar.add_cascade(label="Правка", menu=self.edit_menu)
+        
+        self.edit_menu.add_command(
+            label="Отменить последнее действие",
+            command=self.on_undo,
+            accelerator="Ctrl+Z",
+            state=tk.DISABLED
+        )
+        self.edit_menu.add_separator()
+        self.edit_menu.add_command(
+            label="Показать историю...",
+            command=self.on_show_history,
+            state=tk.DISABLED
+        )
+        self.edit_menu.add_command(
+            label="Очистить историю",
+            command=self.on_clear_history,
+            state=tk.DISABLED
+        )
+
+    def refresh_history_manager(self):
+        """Обновить менеджер истории для текущей папки."""
+        if self.folder_path:
+            self.history_manager = HistoryManager(self.folder_path)
+            self.update_undo_state()
+        else:
+            self.history_manager = None
+            self.update_undo_state()
+
+    def update_undo_state(self):
+        """Обновить состояние меню Undo."""
+        if not self.history_manager:
+            state = tk.DISABLED
+        else:
+            history = self.history_manager.get_history()
+            state = tk.NORMAL if history else tk.DISABLED
+        
+        # Обновляем пункты меню (индексы могут меняться, лучше по label, но тут фиксировано)
+        # 0: Undo, 2: History, 3: Clear
+        try:
+            self.edit_menu.entryconfig(0, state=state)
+            self.edit_menu.entryconfig(2, state=state)
+            self.edit_menu.entryconfig(3, state=state)
+        except Exception:
+            pass
+
+    def on_undo(self):
+        """Обработчик отмены действия."""
+        if not self.history_manager:
+            return
+
+        history = self.history_manager.get_history()
+        if not history:
+            messagebox.showinfo("Информация", "Нет действий для отмены.")
+            return
+
+        last_op = history[0]
+        files_count = len(last_op.get('files', []))
+        timestamp = last_op.get('timestamp', '').replace('T', ' ')
+
+        msg = (
+            f"Будет отменена последняя операция:\n"
+            f"Дата: {timestamp}\n"
+            f"Файлов: {files_count}\n\n"
+            f"Файлы вернутся на свои исходные места.\n"
+            f"Вы уверены?"
+        )
+
+        if not messagebox.askyesno("Подтверждение отмены", msg, icon='question'):
+            return
+
+        self.log_message("\n" + "=" * 50)
+        self.log_message(f"⏮ ЗАПУСК ОТМЕНЫ операции от {timestamp}")
+        
+        success, success_msgs, error_msgs = self.history_manager.undo()
+
+        for m in success_msgs:
+            self.log_message(f"✅ {m}")
+        for e in error_msgs:
+            self.log_message(f"❌ {e}")
+
+        if success:
+            self.log_message("🌟 Отмена выполнена успешно!")
+            messagebox.showinfo("Успех", "Отмена выполнена успешно!")
+        elif not success_msgs and not error_msgs:
+            self.log_message("ℹ️ Нечего отменять.")
+        else:
+            self.log_message("⚠️ Отмена выполнена с ошибками (см. лог).")
+            messagebox.showwarning("Внимание", "Возникли ошибки при отмене. Проверьте лог.")
+
+        self.update_undo_state()
+
+    def on_show_history(self):
+        """Показать историю операций."""
+        if not self.history_manager:
+            return
+            
+        history = self.history_manager.get_history()
+        if not history:
+            messagebox.showinfo("История", "История пуста.")
+            return
+            
+        # Формируем текст
+        text_lines = []
+        for idx, entry in enumerate(history, 1):
+            ts = entry.get('timestamp', '').replace('T', ' ')
+            files = len(entry.get('files', []))
+            text_lines.append(f"{idx}. [{ts}] Файлов: {files}")
+            
+        history_str = "\n".join(text_lines)
+        messagebox.showinfo(f"История ({self.folder_path})", history_str)
+
+    def on_clear_history(self):
+        """Очистить историю."""
+        if not self.history_manager:
+            return
+
+        if messagebox.askyesno("Очистка истории", "Вы уверены? Историю нельзя будет восстановить."):
+            self.history_manager.clear()
+            self.update_undo_state()
+            self.log_message("\n🗑 История очищена.")
+            messagebox.showinfo("Готово", "История очищена.")
 
     def create_widgets(self):
         """Создать элементы интерфейса."""
@@ -647,6 +786,9 @@ class RenameMediaApp:
             )
             self.btn_run.config(state=tk.NORMAL)
             self.log_message(f"📁 Выбрана папка: {folder}\n")
+            
+            # Обновляем менеджер истории
+            self.refresh_history_manager()
 
     def log_message(self, message: str):
         """Добавить сообщение в лог."""
@@ -797,10 +939,12 @@ class RenameMediaApp:
             self.log_message("-" * 80 + "\n")
 
             # Обрабатываем файлы
+            changes_for_history = []
+            
             for file_path in files_to_process:
                 stats['total'] += 1
 
-                success, message = process_file(
+                success, message, paths = process_file(
                     str(file_path), 
                     self.dry_run.get(),
                     template_parser,
@@ -809,6 +953,14 @@ class RenameMediaApp:
 
                 if success:
                     stats['success'] += 1
+                    if not self.dry_run.get() and paths:
+                        try:
+                            old_abs, new_abs = paths
+                            old_rel = old_abs.relative_to(root)
+                            new_rel = new_abs.relative_to(root)
+                            changes_for_history.append({"old": str(old_rel), "new": str(new_rel)})
+                        except ValueError:
+                            pass
                 elif 'Пропущен' in message or 'Уже переименован' in message:
                     stats['skipped'] += 1
                 else:
@@ -827,6 +979,14 @@ class RenameMediaApp:
 
             if self.dry_run.get():
                 self.log_message("\n💡 Снимите галочку 'Тестовый режим' для реального переименования")
+            elif changes_for_history:
+                # Записываем историю
+                if self.history_manager:
+                    self.history_manager.record(changes_for_history)
+                    self.log_message(f"\n📝 Записано {len(changes_for_history)} операций в историю")
+                    self.log_message("💡 Для отмены: меню Правка → Отменить (Ctrl+Z)")
+                    # Обновляем меню Undo (через after, так как это UI)
+                    self.root.after(0, self.update_undo_state)
 
             # Показываем финальное сообщение
             self.root.after(0, lambda: self.show_completion_message(stats))

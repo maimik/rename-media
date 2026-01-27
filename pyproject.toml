@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rename-media"
-version = "1.3.0"
+version = "1.4.0"
 description = "Automatic photo and video file renaming by creation date with EXIF/metadata support"
 readme = "README.md"
 license = {text = "MIT"}
@@ -62,7 +62,7 @@ rename-media = "rename_media_cli:main"
 rename-media-gui = "rename_media_gui:main"
 
 [tool.setuptools]
-py-modules = ["rename_media_cli", "rename_media_gui", "template_parser", "folder_organizer"]
+py-modules = ["rename_media_cli", "rename_media_gui", "template_parser", "folder_organizer", "history_manager"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

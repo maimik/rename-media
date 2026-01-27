@@ -3,7 +3,7 @@
 [![Tests](https://github.com/maimik/rename-media/actions/workflows/tests.yml/badge.svg)](https://github.com/maimik/rename-media/actions/workflows/tests.yml)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.3.0-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.4.0-orange.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 
 **Автоматическое переименование фото и видео файлов по дате съёмки**
@@ -20,6 +20,7 @@
 - **Обнаружение переименованных**: пропуск уже обработанных файлов
 - **Пользовательские шаблоны**: гибкое форматирование имён файлов
 - **Организация по папкам**: группировка по годам/месяцам/датам
+- **Функция отмены (Undo)**: возврат файлов к исходным именам
 
 ## 📸 Формат переименования
 
@@ -140,7 +141,7 @@ Contributions приветствуются! См. [CONTRIBUTING.md](CONTRIBUTING
 
 ### Возможные улучшения
 
-- [ ] Функция отмены (undo)
+- [x] ~~Функция отмены (undo)~~ — реализовано в v1.4.0
 - [ ] Параллельная обработка
 
 ## 📝 Лицензия
