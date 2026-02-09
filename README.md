@@ -3,7 +3,7 @@
 [![Tests](https://github.com/maimik/rename-media/actions/workflows/tests.yml/badge.svg)](https://github.com/maimik/rename-media/actions/workflows/tests.yml)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.4.0-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.4.1-orange.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 
 **Автоматическое переименование фото и видео файлов по дате съёмки**
@@ -31,7 +31,15 @@
 
 ## 🚀 Быстрый старт
 
-### Установка
+### Вариант 1: Готовый EXE файл (Windows)
+
+Скачайте готовый исполняемый файл из папки [`releases/`](releases/) - не требует установки Python!
+
+1. Скачайте файл `RenameMedia.exe`
+2. Запустите его двойным кликом
+3. Выберите папку с фото/видео и нажмите "Обработать"
+
+### Вариант 2: Из исходников (кроссплатформенно)
 
 ```bash
 # Клонирование

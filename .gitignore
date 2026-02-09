@@ -26,6 +26,9 @@ wheels/
 *.manifest
 *.spec
 
+# Releases (allow EXE in releases/ folder)
+!releases/*.exe
+
 # Unit test / coverage
 htmlcov/
 .tox/

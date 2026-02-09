@@ -882,7 +882,7 @@ class RenameMediaApp:
 
             # Инициализация инструментов v1.3
             template_parser = TemplateParser(self.template_str.get())
-            folder_organizer = FolderOrganizer() if self.organize_folders.get() else None
+            folder_organizer = FolderOrganizer('year-month') if self.organize_folders.get() else None
             
             if folder_organizer:
                 self.log_message("📁 Группировка по папкам ВКЛЮЧЕНА")
